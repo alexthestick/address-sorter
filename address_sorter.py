@@ -339,13 +339,25 @@ class AddressSorter:
                         keep_addresses.extend(no_unit_indices)
 
             else:
-                # SFA/HOA LOGIC: Prefer addresses WITHOUT units, but keep unique WITH units
-                # If we have both versions (with and without unit)
+                # SFA/HOA LOGIC: Keep the majority (with-unit or no-unit) community-wide
+                # Determine community-wide majority
+                total_in_community = len(subname_df)
+                with_unit_in_community = len(subname_df[~subname_df['Unit Number'].isna()])
+                no_unit_in_community = total_in_community - with_unit_in_community
+                
+                # Community-wide majority determines what to keep
+                community_prefers_with_unit = with_unit_in_community > no_unit_in_community
+                
+                # If we have both versions (with and without unit) at same street address
                 if len(no_unit_indices) > 0 and len(with_unit_indices) > 0:
-                    # Keep all no-unit versions
-                    keep_addresses.extend(no_unit_indices)
-                    # Remove all with-unit versions (duplicates)
-                    remove_addresses.extend(with_unit_indices)
+                    if community_prefers_with_unit:
+                        # Community majority have units: keep with-unit, remove no-unit
+                        keep_addresses.extend(with_unit_indices)
+                        remove_addresses.extend(no_unit_indices)
+                    else:
+                        # Community majority don't have units: keep no-unit, remove with-unit
+                        keep_addresses.extend(no_unit_indices)
+                        remove_addresses.extend(with_unit_indices)
 
                 # If only no-unit versions exist
                 elif len(no_unit_indices) > 0 and len(with_unit_indices) == 0:

@@ -28,21 +28,21 @@ if uploaded and process_clicked:
 		input_path = tmp.name
 
 	# Run the sorter pipeline
-    try:
-        with st.spinner("Processing... This can take a moment for large files."):
-            sorter = AddressSorter(input_path)
-            sorter.load_data()
-            roe_candidates = sorter.initial_sort()
-            sorter.process_roe_deduplication(roe_candidates)
-            sorter.create_flagged_tab()
-            sorter.create_unit_count_tab()
-    except ValueError as ve:
-        st.error(f"Input error: {ve}")
-        st.stop()
-    except Exception as e:
-        st.error("An unexpected error occurred while processing. Please verify your file format and try again.")
-        st.exception(e)
-        st.stop()
+	try:
+		with st.spinner("Processing... This can take a moment for large files."):
+			sorter = AddressSorter(input_path)
+			sorter.load_data()
+			roe_candidates = sorter.initial_sort()
+			sorter.process_roe_deduplication(roe_candidates)
+			sorter.create_flagged_tab()
+			sorter.create_unit_count_tab()
+	except ValueError as ve:
+		st.error(f"Input error: {ve}")
+		st.stop()
+	except Exception as e:
+		st.error("An unexpected error occurred while processing. Please verify your file format and try again.")
+		st.exception(e)
+		st.stop()
 
 	# Clean up temp file
 	try:

@@ -100,6 +100,10 @@ class AddressSorter:
 
         unit_str = str(unit_value).upper().strip()
 
+        # Check for standalone "U" or "# U" (dud addresses)
+        if unit_str == 'U' or unit_str == '# U':
+            return 'u_indicator'
+
         # Check for office/commercial indicators
         if any(keyword in unit_str for keyword in ['OFC', 'OFFICE', 'CLUBHOUSE', 'LEASING', 'CLUB']):
             return 'office_indicator'
@@ -190,6 +194,27 @@ class AddressSorter:
         # Remove Plus 4 Code anomalies
         subname_df = subname_df.drop(plus4_anomaly_indices)
         remove_addresses.extend(plus4_anomaly_indices)
+
+        if len(subname_df) == 0:
+            return keep_addresses, remove_addresses, flagged
+
+        # Check for empty Plus 4 Code (skip "Other" building type as those are pre-flagged)
+        empty_plus4_indices = []
+        if 'Plus 4 Code' in subname_df.columns and building_type != 'Other':
+            for idx, row in subname_df.iterrows():
+                plus4 = row.get('Plus 4 Code', None)
+                if pd.isna(plus4):
+                    empty_plus4_indices.append(idx)
+                    # Flag for review AND remove
+                    flagged.append({
+                        'index': idx,
+                        'reason': 'Empty Plus 4 Code - verify if valid address',
+                        **row.to_dict()
+                    })
+
+        # Remove empty Plus 4 Code addresses
+        subname_df = subname_df.drop(empty_plus4_indices)
+        remove_addresses.extend(empty_plus4_indices)
 
         if len(subname_df) == 0:
             return keep_addresses, remove_addresses, flagged

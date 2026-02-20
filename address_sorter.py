@@ -290,16 +290,33 @@ class AddressSorter:
         if len(subname_df) == 0:
             return keep_addresses, remove_addresses, flagged
 
-        # Detect townhome-style MDUs: each unit has unique street number
+        # Detect townhome-style: each physical address exists as both a no-unit and with-unit duplicate
         # Calculate ratio of unique street addresses to total addresses
         unique_street_count = subname_df['Street Address'].nunique()
         total_addresses_in_subname = len(subname_df)
         unique_street_ratio = unique_street_count / total_addresses_in_subname if total_addresses_in_subname > 0 else 0
-        
-        # If >85% of addresses have unique street numbers, it's townhome-style
+
+        # For MDU/condo: if >85% of addresses have unique street numbers, it's townhome-style
         is_townhome_style = (is_mdu or is_condo_style) and unique_street_ratio > 0.85
-        
-        if is_townhome_style:
+
+        # For SFA/HOA: detect townhome-style by checking if most duplicate pairs are
+        # exactly one no-unit + one with-unit (the classic "address listed twice" pattern)
+        if not is_townhome_style and not is_mdu and not is_condo_style:
+            paired_dupe_count = 0
+            total_dupe_groups = 0
+            for street_address, group in subname_df.groupby('Street Address'):
+                if len(group) > 1:
+                    total_dupe_groups += 1
+                    no_unit_in_group = group['Unit Number'].isna().sum()
+                    with_unit_in_group = group['Unit Number'].notna().sum()
+                    if no_unit_in_group == 1 and with_unit_in_group == 1:
+                        paired_dupe_count += 1
+            # If 70%+ of duplicate groups are clean pairs, treat as townhome-style
+            if total_dupe_groups > 0 and paired_dupe_count / total_dupe_groups >= 0.70:
+                is_townhome_style = True
+                print(f"    Note: Detected townhome-style SFA ({paired_dupe_count}/{total_dupe_groups} duplicate pairs are clean no-unit/with-unit pairs)")
+
+        if is_townhome_style and (is_mdu or is_condo_style):
             print(f"    Note: Detected townhome-style MDU (unique street ratio: {unique_street_ratio:.2f})")
 
         # Group by street address to find duplicates

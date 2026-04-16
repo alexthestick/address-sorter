@@ -36,6 +36,7 @@ if uploaded and process_clicked:
 			sorter.process_roe_deduplication(roe_candidates)
 			sorter.create_flagged_tab()
 			sorter.create_unit_count_tab()
+			sorter.create_new_market_tabs()
 	except ValueError as ve:
 		st.error(f"Input error: {ve}")
 		st.stop()
@@ -64,13 +65,14 @@ if uploaded and process_clicked:
 
 	st.markdown("---")
 
-	# Tabbed preview of results
-	sheet_names = list(sorter.tabs.keys())
+	# Tabbed preview of results — core tabs + New Market Zone tabs
+	all_preview = {**sorter.tabs, **sorter.new_market_tabs}
+	sheet_names = list(all_preview.keys())
 	st.subheader("Preview Sheets")
 	tab_objects = st.tabs(sheet_names)
 	for i, name in enumerate(sheet_names):
 		with tab_objects[i]:
-			df = sorter.tabs.get(name)
+			df = all_preview.get(name)
 			if df is None or (hasattr(df, "empty") and df.empty):
 				st.info("No data in this sheet.")
 			else:
@@ -80,6 +82,9 @@ if uploaded and process_clicked:
 	buffer = io.BytesIO()
 	with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
 		for tab_name, df in sorter.tabs.items():
+			if df is not None and not df.empty:
+				df.to_excel(writer, sheet_name=tab_name, index=False)
+		for tab_name, df in sorter.new_market_tabs.items():
 			if df is not None and not df.empty:
 				df.to_excel(writer, sheet_name=tab_name, index=False)
 	buffer.seek(0)

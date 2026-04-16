@@ -28,6 +28,7 @@ class AddressSorter:
             'Flagged for Review': None,
             'Unit Count': None
         }
+        self.new_market_tabs = {}  # Keyed by tab name, e.g. "New Market IRV-Z2"
         self.flagged_addresses = []
         self.required_columns = ['ID', 'Street Address', 'Unit Number', 'Building Type', 'Subname']
 
@@ -615,12 +616,74 @@ class AddressSorter:
         for cat, cnt in zip(counts['Category'], counts['Count']):
             print(f"  {cat}: {cnt}")
 
+    def create_new_market_tabs(self):
+        """Create one 'New Market {Zone}' summary tab per unique Zone found in ROE data.
+
+        Each tab lists communities (Subname + Building Type) with their address count.
+        Columns: Zone, Community, Type, Listed Count, Vetro, Footage, Arterial footage
+        The last three columns are left blank for manual entry.
+        """
+        print("\nGenerating New Market Zone tabs...")
+
+        if self.tabs['ROE'] is None or len(self.tabs['ROE']) == 0:
+            print("  No ROE data found, skipping New Market tabs")
+            return
+
+        # The ROE tab may contain blank spacing rows — filter those out
+        roe_data = self.tabs['ROE'].copy()
+        roe_data = roe_data[
+            roe_data['Subname'].notna() &
+            roe_data['Building Type'].notna()
+        ]
+
+        if 'Zone' not in roe_data.columns:
+            print("  No Zone column in ROE data, skipping New Market tabs")
+            return
+
+        roe_with_zone = roe_data[
+            roe_data['Zone'].notna() &
+            (roe_data['Zone'].astype(str).str.strip() != '')
+        ]
+
+        if len(roe_with_zone) == 0:
+            print("  No ROE addresses have Zone data, skipping New Market tabs")
+            return
+
+        for zone, zone_df in roe_with_zone.groupby('Zone'):
+            # Build a safe Excel sheet name (max 31 chars)
+            tab_name = f"New Market {zone}"[:31]
+            print(f"  Creating tab: '{tab_name}'")
+
+            rows = []
+            for (subname, building_type), group in zone_df.groupby(
+                ['Subname', 'Building Type'], sort=True
+            ):
+                community_name = '' if subname == 'No Subname' else subname
+                rows.append({
+                    'Zone': zone,
+                    'Community': community_name,
+                    'Type': building_type,
+                    'Listed Count': len(group),
+                    'Vetro': '',
+                    'Footage': '',
+                    'Arterial footage': '',
+                })
+
+            self.new_market_tabs[tab_name] = pd.DataFrame(rows)
+            print(f"    {len(rows)} community/type row(s) for zone {zone}")
+
     def save_output(self, output_file):
         """Save all tabs to an Excel file."""
         print(f"\nSaving output to {output_file}...")
 
         with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
             for tab_name, df in self.tabs.items():
+                if df is not None and not df.empty:
+                    df.to_excel(writer, sheet_name=tab_name, index=False)
+                    print(f"  Saved {tab_name} tab ({len(df)} rows)")
+
+            # New Market Zone tabs (one per zone)
+            for tab_name, df in self.new_market_tabs.items():
                 if df is not None and not df.empty:
                     df.to_excel(writer, sheet_name=tab_name, index=False)
                     print(f"  Saved {tab_name} tab ({len(df)} rows)")
@@ -638,6 +701,7 @@ class AddressSorter:
         self.process_roe_deduplication(roe_candidates)
         self.create_flagged_tab()
         self.create_unit_count_tab()
+        self.create_new_market_tabs()
         self.save_output(output_file)
 
         print("\n" + "="*60)

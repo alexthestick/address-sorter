@@ -678,15 +678,14 @@ class AddressSorter:
             print("  No ROE addresses have Zone data, skipping New Market tabs")
             return
 
-        # ── 1. Combined "New Market" tab — ALL HOA communities, with or without zone ──
-        # Use the full roe_data so HOAs without a zone are included.
-        # Fill missing Zone with '' so groupby keeps different zones separate
-        # (e.g. two communities named "Portofino" in different zones stay as two rows).
-        hoa_df = roe_data[roe_data['Building Type'] == 'HOA'].copy()
-        if not hoa_df.empty:
-            hoa_df['_zone_key'] = hoa_df['Zone'].fillna('')
+        # ── 1. Combined "New Market" tab — ALL communities, every building type ──
+        # Same content as the per-zone tabs but all zones together in one place.
+        # Fill missing Zone with '' so groupby keeps different zones separate.
+        all_df = roe_data.copy()
+        if not all_df.empty:
+            all_df['_zone_key'] = all_df['Zone'].fillna('')
             combined_rows = []
-            for (subname, zone_key, building_type), group in hoa_df.groupby(
+            for (subname, zone_key, building_type), group in all_df.groupby(
                 ['Subname', '_zone_key', 'Building Type'], sort=True
             ):
                 community_name = '' if subname == 'No Subname' else subname
@@ -701,12 +700,12 @@ class AddressSorter:
                 })
             combined_df = pd.DataFrame(combined_rows)
             combined_df = combined_df.sort_values(
-                ['Zone', 'Community'], ignore_index=True
+                ['Zone', 'Type', 'Community'], ignore_index=True
             )
             self.new_market_tabs['New Market'] = combined_df
-            print(f"  Created 'New Market' tab ({len(combined_df)} HOA communities)")
+            print(f"  Created 'New Market' tab ({len(combined_df)} communities)")
         else:
-            print("  No HOA communities found for combined New Market tab")
+            print("  No ROE communities found for New Market tab")
 
         # ── 2. Per-zone tabs — all building types, sorted by Type then Community ──
         for zone, zone_df in roe_with_zone.groupby('Zone'):

@@ -616,20 +616,49 @@ class AddressSorter:
         for cat, cnt in zip(counts['Category'], counts['Count']):
             print(f"  {cat}: {cnt}")
 
-    def create_new_market_tabs(self):
-        """Create one 'New Market {Zone}' summary tab per unique Zone found in ROE data.
+    def _build_market_rows(self, zone_df, zone_label):
+        """Helper: build summary rows for a group of ROE addresses.
 
-        Each tab lists communities (Subname + Building Type) with their address count.
-        Columns: Zone, Community, Type, Listed Count, Vetro, Footage, Arterial footage
-        The last three columns are left blank for manual entry.
+        Rows are sorted by Type first, then Community name, so the same
+        building types always appear together (all HOAs, then all SFAs, etc.).
         """
-        print("\nGenerating New Market Zone tabs...")
+        rows = []
+        for (subname, building_type), group in zone_df.groupby(
+            ['Subname', 'Building Type'], sort=True
+        ):
+            community_name = '' if subname == 'No Subname' else subname
+            rows.append({
+                'Zone': zone_label,
+                'Community': community_name,
+                'Type': building_type,
+                'Listed Count': len(group),
+                'Vetro': '',
+                'Footage': '',
+                'Arterial footage': '',
+            })
+        # Sort by Type first so same building types line up, then by Community
+        df = pd.DataFrame(rows)
+        if not df.empty:
+            df = df.sort_values(['Type', 'Community'], ignore_index=True)
+        return df
+
+    def create_new_market_tabs(self):
+        """Create New Market summary tabs:
+
+        1. 'New Market' — combined tab with ALL HOA communities across every zone.
+        2. 'New Market {Zone}' — one tab per zone with all building types,
+           rows sorted by Type so same types line up together.
+
+        Columns: Zone, Community, Type, Listed Count, Vetro, Footage, Arterial footage
+        Vetro / Footage / Arterial footage are left blank for manual entry.
+        """
+        print("\nGenerating New Market tabs...")
 
         if self.tabs['ROE'] is None or len(self.tabs['ROE']) == 0:
             print("  No ROE data found, skipping New Market tabs")
             return
 
-        # The ROE tab may contain blank spacing rows — filter those out
+        # Filter out blank spacing rows added by add_spacing_to_roe()
         roe_data = self.tabs['ROE'].copy()
         roe_data = roe_data[
             roe_data['Subname'].notna() &
@@ -649,17 +678,15 @@ class AddressSorter:
             print("  No ROE addresses have Zone data, skipping New Market tabs")
             return
 
-        for zone, zone_df in roe_with_zone.groupby('Zone'):
-            # Build a safe Excel sheet name (max 31 chars)
-            tab_name = f"New Market {zone}"[:31]
-            print(f"  Creating tab: '{tab_name}'")
-
-            rows = []
-            for (subname, building_type), group in zone_df.groupby(
-                ['Subname', 'Building Type'], sort=True
+        # ── 1. Combined "New Market" tab — HOA communities only, all zones ──
+        hoa_df = roe_with_zone[roe_with_zone['Building Type'] == 'HOA']
+        if not hoa_df.empty:
+            combined_rows = []
+            for (zone, subname, building_type), group in hoa_df.groupby(
+                ['Zone', 'Subname', 'Building Type'], sort=True
             ):
                 community_name = '' if subname == 'No Subname' else subname
-                rows.append({
+                combined_rows.append({
                     'Zone': zone,
                     'Community': community_name,
                     'Type': building_type,
@@ -668,9 +695,21 @@ class AddressSorter:
                     'Footage': '',
                     'Arterial footage': '',
                 })
+            combined_df = pd.DataFrame(combined_rows)
+            combined_df = combined_df.sort_values(
+                ['Type', 'Zone', 'Community'], ignore_index=True
+            )
+            self.new_market_tabs['New Market'] = combined_df
+            print(f"  Created 'New Market' tab ({len(combined_df)} HOA communities)")
+        else:
+            print("  No HOA communities found for combined New Market tab")
 
-            self.new_market_tabs[tab_name] = pd.DataFrame(rows)
-            print(f"    {len(rows)} community/type row(s) for zone {zone}")
+        # ── 2. Per-zone tabs — all building types, sorted by Type then Community ──
+        for zone, zone_df in roe_with_zone.groupby('Zone'):
+            tab_name = f"New Market {zone}"[:31]
+            tab_df = self._build_market_rows(zone_df, zone)
+            self.new_market_tabs[tab_name] = tab_df
+            print(f"  Created '{tab_name}' tab ({len(tab_df)} rows)")
 
     def save_output(self, output_file):
         """Save all tabs to an Excel file."""

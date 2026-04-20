@@ -645,10 +645,10 @@ class AddressSorter:
     def create_new_market_tabs(self):
         """Create New Market summary tabs:
 
-        1. 'New Market' — combined tab with ALL HOA communities across every zone.
-        2. 'New Market {Zone}' — one tab per zone with all building types,
-           rows sorted by Type so same types line up together.
+        1. 'New Market' — always created; every ROE community regardless of zone.
+        2. 'New Market {Zone}' — one tab per zone (only when zone data exists).
 
+        Both are sorted by Type then Community so same building types line up.
         Columns: Zone, Community, Type, Listed Count, Vetro, Footage, Arterial footage
         Vetro / Footage / Arterial footage are left blank for manual entry.
         """
@@ -665,47 +665,45 @@ class AddressSorter:
             roe_data['Building Type'].notna()
         ]
 
+        # ── 1. Combined "New Market" tab — ALWAYS created ──
+        # Includes every ROE community regardless of zone.
+        # Fill missing Zone with '' so same-named communities in different
+        # zones remain as separate rows.
+        all_df = roe_data.copy()
+        all_df['_zone_key'] = all_df['Zone'].fillna('') if 'Zone' in all_df.columns else ''
+        combined_rows = []
+        for (subname, zone_key, building_type), group in all_df.groupby(
+            ['Subname', '_zone_key', 'Building Type'], sort=True
+        ):
+            community_name = '' if subname == 'No Subname' else subname
+            combined_rows.append({
+                'Zone': zone_key,
+                'Community': community_name,
+                'Type': building_type,
+                'Listed Count': len(group),
+                'Vetro': '',
+                'Footage': '',
+                'Arterial footage': '',
+            })
+        combined_df = pd.DataFrame(combined_rows)
+        if not combined_df.empty:
+            combined_df = combined_df.sort_values(
+                ['Zone', 'Type', 'Community'], ignore_index=True
+            )
+        self.new_market_tabs['New Market'] = combined_df
+        print(f"  Created 'New Market' tab ({len(combined_df)} communities)")
+
+        # ── 2. Per-zone tabs — only when zone data is present ──
         if 'Zone' not in roe_data.columns:
-            print("  No Zone column in ROE data, skipping New Market tabs")
+            print("  No Zone column — skipping per-zone tabs")
             return
 
         roe_with_zone = roe_data[
             roe_data['Zone'].notna() &
             (roe_data['Zone'].astype(str).str.strip() != '')
         ]
-
         if len(roe_with_zone) == 0:
-            print("  No ROE addresses have Zone data, skipping New Market tabs")
-            return
-
-        # ── 1. Combined "New Market" tab — ALL communities, every building type ──
-        # Same content as the per-zone tabs but all zones together in one place.
-        # Fill missing Zone with '' so groupby keeps different zones separate.
-        all_df = roe_data.copy()
-        if not all_df.empty:
-            all_df['_zone_key'] = all_df['Zone'].fillna('')
-            combined_rows = []
-            for (subname, zone_key, building_type), group in all_df.groupby(
-                ['Subname', '_zone_key', 'Building Type'], sort=True
-            ):
-                community_name = '' if subname == 'No Subname' else subname
-                combined_rows.append({
-                    'Zone': zone_key,
-                    'Community': community_name,
-                    'Type': building_type,
-                    'Listed Count': len(group),
-                    'Vetro': '',
-                    'Footage': '',
-                    'Arterial footage': '',
-                })
-            combined_df = pd.DataFrame(combined_rows)
-            combined_df = combined_df.sort_values(
-                ['Zone', 'Type', 'Community'], ignore_index=True
-            )
-            self.new_market_tabs['New Market'] = combined_df
-            print(f"  Created 'New Market' tab ({len(combined_df)} communities)")
-        else:
-            print("  No ROE communities found for New Market tab")
+            print("  No zones found — skipping per-zone tabs")
 
         # ── 2. Per-zone tabs — all building types, sorted by Type then Community ──
         for zone, zone_df in roe_with_zone.groupby('Zone'):

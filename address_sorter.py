@@ -678,16 +678,20 @@ class AddressSorter:
             print("  No ROE addresses have Zone data, skipping New Market tabs")
             return
 
-        # ── 1. Combined "New Market" tab — HOA communities only, all zones ──
-        hoa_df = roe_with_zone[roe_with_zone['Building Type'] == 'HOA']
+        # ── 1. Combined "New Market" tab — ALL HOA communities, with or without zone ──
+        # Use the full roe_data so HOAs without a zone are included.
+        # Fill missing Zone with '' so groupby keeps different zones separate
+        # (e.g. two communities named "Portofino" in different zones stay as two rows).
+        hoa_df = roe_data[roe_data['Building Type'] == 'HOA'].copy()
         if not hoa_df.empty:
+            hoa_df['_zone_key'] = hoa_df['Zone'].fillna('')
             combined_rows = []
-            for (zone, subname, building_type), group in hoa_df.groupby(
-                ['Zone', 'Subname', 'Building Type'], sort=True
+            for (subname, zone_key, building_type), group in hoa_df.groupby(
+                ['Subname', '_zone_key', 'Building Type'], sort=True
             ):
                 community_name = '' if subname == 'No Subname' else subname
                 combined_rows.append({
-                    'Zone': zone,
+                    'Zone': zone_key,
                     'Community': community_name,
                     'Type': building_type,
                     'Listed Count': len(group),
@@ -697,7 +701,7 @@ class AddressSorter:
                 })
             combined_df = pd.DataFrame(combined_rows)
             combined_df = combined_df.sort_values(
-                ['Type', 'Zone', 'Community'], ignore_index=True
+                ['Zone', 'Community'], ignore_index=True
             )
             self.new_market_tabs['New Market'] = combined_df
             print(f"  Created 'New Market' tab ({len(combined_df)} HOA communities)")

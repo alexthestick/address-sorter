@@ -31,6 +31,9 @@ class AddressSorter:
         self.new_market_tabs = {}  # Keyed by tab name, e.g. "New Market IRV-Z2"
         self.flagged_addresses = []
         self.required_columns = ['ID', 'Street Address', 'Unit Number', 'Building Type', 'Subname']
+        # Commercial-structures files have a different layout (Category + Unit Count)
+        self.commercial_columns = ['Category', 'Unit Count']
+        self.is_commercial_structures = False
 
     def load_data(self):
         """Load the input CSV file."""
@@ -45,7 +48,15 @@ class AddressSorter:
         # Check for required columns
         missing_cols = [col for col in self.required_columns if col not in self.df.columns]
         if missing_cols:
-            raise ValueError(f"Missing required columns: {missing_cols}")
+            # Not a standard address file. Is it a commercial-structures file?
+            if all(col in self.df.columns for col in self.commercial_columns):
+                self.is_commercial_structures = True
+                print(f"Loaded {len(self.df)} commercial structures")
+                return
+            raise ValueError(
+                f"Missing required columns: {missing_cols}. "
+                f"(For a commercial-structures file, the columns {self.commercial_columns} are needed.)"
+            )
 
         # Keep only essential columns (plus a few useful ones)
         essential_cols = self.required_columns.copy()
@@ -616,6 +627,41 @@ class AddressSorter:
         for cat, cnt in zip(counts['Category'], counts['Count']):
             print(f"  {cat}: {cnt}")
 
+    def create_commercial_summary(self):
+        """Create a one-sheet summary of a commercial-structures file.
+
+        One row per Category with the total Unit Count for that category,
+        largest first, followed by a Total row.
+        """
+        print("\nGenerating Commercial Summary...")
+
+        df = self.df[self.commercial_columns].copy()
+
+        # Blank categories are grouped together instead of silently dropped
+        df['Category'] = df['Category'].fillna('').astype(str).str.strip()
+        df.loc[df['Category'] == '', 'Category'] = 'Uncategorized'
+
+        # Unit Count should be a number; anything else is treated as 0 and reported
+        raw_units = df['Unit Count']
+        df['Unit Count'] = pd.to_numeric(raw_units, errors='coerce')
+        bad_rows = int(df['Unit Count'].isna().sum())
+        if bad_rows:
+            print(f"  WARNING: {bad_rows} row(s) had a missing/non-numeric Unit Count and were counted as 0")
+        df['Unit Count'] = df['Unit Count'].fillna(0).astype(int)
+
+        summary = df.groupby('Category', as_index=False)['Unit Count'].sum()
+        summary = summary.sort_values(['Unit Count', 'Category'], ascending=[False, True])
+
+        total_row = pd.DataFrame({'Category': ['Total'], 'Unit Count': [int(summary['Unit Count'].sum())]})
+        summary = pd.concat([summary, total_row], ignore_index=True)
+
+        # In this mode the workbook is just this one sheet
+        self.tabs = {'Commercial Summary': summary}
+
+        print("\nCommercial Summary:")
+        for cat, cnt in zip(summary['Category'], summary['Unit Count']):
+            print(f"  {cat}: {cnt}")
+
     def _build_market_rows(self, zone_df, zone_label):
         """Helper: build summary rows for a group of ROE addresses.
 
@@ -737,11 +783,14 @@ class AddressSorter:
         print("="*60)
 
         self.load_data()
-        roe_candidates = self.initial_sort()
-        self.process_roe_deduplication(roe_candidates)
-        self.create_flagged_tab()
-        self.create_unit_count_tab()
-        self.create_new_market_tabs()
+        if self.is_commercial_structures:
+            self.create_commercial_summary()
+        else:
+            roe_candidates = self.initial_sort()
+            self.process_roe_deduplication(roe_candidates)
+            self.create_flagged_tab()
+            self.create_unit_count_tab()
+            self.create_new_market_tabs()
         self.save_output(output_file)
 
         print("\n" + "="*60)

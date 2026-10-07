@@ -32,11 +32,14 @@ if uploaded and process_clicked:
 		with st.spinner("Processing... This can take a moment for large files."):
 			sorter = AddressSorter(input_path)
 			sorter.load_data()
-			roe_candidates = sorter.initial_sort()
-			sorter.process_roe_deduplication(roe_candidates)
-			sorter.create_flagged_tab()
-			sorter.create_unit_count_tab()
-			sorter.create_new_market_tabs()
+			if sorter.is_commercial_structures:
+				sorter.create_commercial_summary()
+			else:
+				roe_candidates = sorter.initial_sort()
+				sorter.process_roe_deduplication(roe_candidates)
+				sorter.create_flagged_tab()
+				sorter.create_unit_count_tab()
+				sorter.create_new_market_tabs()
 	except ValueError as ve:
 		st.error(f"Input error: {ve}")
 		st.stop()
@@ -52,16 +55,24 @@ if uploaded and process_clicked:
 		pass
 
 	# Summary metrics
-	col1, col2, col3, col4 = st.columns(4)
-	with col1:
-		st.metric("Total", len(sorter.tabs.get("All", pd.DataFrame())))
-	with col2:
-		st.metric("ROE", len(sorter.tabs.get("ROE", pd.DataFrame())))
-	with col3:
-		st.metric("Remove", len(sorter.tabs.get("Remove", pd.DataFrame())))
-	with col4:
-		flagged_df = sorter.tabs.get("Flagged for Review", pd.DataFrame())
-		st.metric("Flagged", len(flagged_df))
+	if sorter.is_commercial_structures:
+		summary_df = sorter.tabs["Commercial Summary"]
+		col1, col2 = st.columns(2)
+		with col1:
+			st.metric("Total Units", int(summary_df["Unit Count"].iloc[-1]))
+		with col2:
+			st.metric("Categories", len(summary_df) - 1)
+	else:
+		col1, col2, col3, col4 = st.columns(4)
+		with col1:
+			st.metric("Total", len(sorter.tabs.get("All", pd.DataFrame())))
+		with col2:
+			st.metric("ROE", len(sorter.tabs.get("ROE", pd.DataFrame())))
+		with col3:
+			st.metric("Remove", len(sorter.tabs.get("Remove", pd.DataFrame())))
+		with col4:
+			flagged_df = sorter.tabs.get("Flagged for Review", pd.DataFrame())
+			st.metric("Flagged", len(flagged_df))
 
 	st.markdown("---")
 

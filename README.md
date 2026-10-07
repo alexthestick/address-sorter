@@ -35,6 +35,9 @@ python3 address_sorter.py path/to/input.xlsx  # or .csv
 ### Output
 An Excel workbook with sheets: `All`, `Public`, `Commercial`, `ROE`, `Competitive`, `Other`, `Remove`, `Flagged for Review`, `Unit Count`.
 
+### Commercial Structures files
+If the uploaded file is a commercial-structures export (it has `Category` and `Unit Count` columns instead of the standard address columns), the sorter detects it automatically and outputs a single `Commercial Summary` sheet: one row per `Category` with its total `Unit Count` (largest first), plus a `Total` row at the bottom. Rows with a blank Category are grouped as `Uncategorized`; a missing or non-numeric Unit Count counts as 0 (a warning is printed).
+
 ### Notes
 - If launched without CLI arguments, a GUI file picker will open (Tkinter).
 - Output is saved as `<input_basename>_sorted.xlsx` if no output filename is chosen.
